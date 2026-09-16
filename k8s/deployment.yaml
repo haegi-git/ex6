@@ -15,7 +15,11 @@ spec:
     spec:
       containers:
         - name: nginx-container
+<<<<<<< HEAD
           image: haegihaegi/nginx:377d77033527ea9db2a6a52eafd07107aae6b977
+=======
+          image: haegihaegi/nginx:004d9020bc2b70c9437fddf4439e3dbfdb27863d
+>>>>>>> 68a2608 (test)
           ports:
             - containerPort: 80
 ---
@@ -25,10 +29,64 @@ metadata:
   name: nginx-svc
   namespace: default
 spec:
-  type: LoadBalancer
+  type: ClusterIP
   selector:
     app: nginx-web-label
   ports:
     - port: 80
       targetPort: 80
       protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: alb-base-ingress
+  annotations:  # 보안 그룹 등 AWS에 대한 설정들
+    # 보안 그룹 설정: alb.ingress.kubernetes.io/security-groups: id, id, ...
+    # alb.ingress.kubernetes.io/security-groups: sg-08344a6a23c701510
+    # internet-facing: 외부로드밸런서(IP 부여), internet(내부)
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    # ip(Pod의 IP로 트래픽 전달)
+    # instance: EC2인스턴스를 대상으로 하는 타겟 그룹 생성
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    # HTTPS 인증서 정의: alb.ingress.kubernetes.io/certificate-arn: <인증서ARN>
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:eu-central-1:925047940866:certificate/18c20471-2efa-45a6-9192-af57960a2b4a
+    # HTTP접속 시 HTTPS로 리다이렉션(선택사항, 권장)
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    # 경로 재작성: 백앤드로 연결시 경로를 바꿔줍니다.
+    # Nginx Ingress Controller 사용시: nginx.ingress.kubernetes.io/rewrite-target: /
+    # alb.ingress.kubernetes.io/transforms.<service-name>: >
+    alb.ingress.kubernetes.io/transforms.nginx-service: >
+      [
+        {
+          "type": "url-rewrite",
+          "urlRewriteConfig": {
+            "rewrites": [
+              {
+                "regex": "^\\/nginx(?:\\/(.*))?$",
+                "replace": "/$1"
+              }
+            ]
+          }
+        }
+      ]
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+          - path: /nginx
+            pathType: Prefix
+            backend:
+              service:
+                name: nginx-svc   # Kubernetes Service Name
+                port:
+                  number: 80
+          # - path: /api      # fastAPI: main.py의 # app = FastAPI(root_path="/api")
+          #   pathType: Prefix
+          #   backend:
+          #     service:
+          #       name: <service_name>
+          #       port:
+          #         number: 8000
